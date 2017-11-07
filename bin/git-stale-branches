@@ -1,0 +1,60 @@
+#!/bin/bash
+
+if [ $# -gt 0 ]
+then
+	REMOTES=$*
+else
+	REMOTES=$(git remote)
+fi
+
+remote_protected_branches() {
+	git for-each-ref refs/remotes/$1/{release/*,hotfix/*,develop} --format='%(refname:strip=3)'
+}
+
+local_protected_branches() {
+	git for-each-ref refs/heads/{release/*,hotfix/*,develop} --format='%(refname:short)'
+}
+
+merged_in_remote() {
+	git for-each-ref --merged refs/remotes/$1/$2 refs/remotes/$1/* --format='%(refname:strip=3)' \
+		| grep -v master$ \
+		| grep -v develop$
+}
+
+delete_merged_in_remote() {
+	for target_branch in $(remote_protected_branches $1)
+	do
+		echo "# Remote branches merged in $1/${target_branch}..."
+		for branch in $(merged_in_remote $1 ${target_branch})
+		do
+			echo git push --delete ${1} $branch
+		done
+		echo
+	done
+}
+
+merged_in_local() {
+	git for-each-ref --merged refs/heads/$1 refs/heads/* --format='  %(refname:short)' \
+		| grep -v master$ \
+		| grep -v develop$
+}
+
+delete_merged_in_local() {
+	for target_branch in $(local_protected_branches)
+	do
+		echo "# Local branches merged in ${target_branch}..."
+		for branch in $(merged_in_local ${target_branch})
+		do
+			echo git update-ref -d refs/heads/$branch
+		done
+		echo
+done
+}
+
+for remote in $REMOTES
+do
+	delete_merged_in_remote ${remote}
+	echo
+done
+
+delete_merged_in_local
